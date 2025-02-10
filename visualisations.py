@@ -1,3 +1,13 @@
+'''
+This script provides various functions to visualise networks and embeddings etc.
+
+It has 2 sections:
+
+1. A class which provides functions to visualise the high dimensional FRT distribution embeddings in 2d (using PCA or tSNE)
+2. A set of miscallenous functions for visualising communities, matchings, and animate random walks on a network
+
+'''
+
 import matplotlib.pyplot as plt
 import numpy as np
 import networkx as nx
@@ -6,9 +16,6 @@ from IPython.display import HTML
 from sklearn.manifold import TSNE
 from sklearn.decomposition import PCA
 from sklearn.manifold import SpectralEmbedding
-
-####### Various functions to visualise networks and embeddings etc. ###########
-
 
 class VisualiseEmbedding:
 
@@ -51,8 +58,8 @@ class VisualiseEmbedding:
         tsne = TSNE(n_components=2, perplexity=perplexity, learning_rate=learning_rate, random_state=random_state)
         embedding_2d = tsne.fit_transform(self.node_embeddings)
         return embedding_2d
-
-    def compute_pca_embedding(self):
+        
+    def compute_pca_embedding(self, instance=False, other_embedding=None):
         """
         Compute the 2D PCA embedding for a given matrix of node embeddings and visualize it.
     
@@ -65,7 +72,12 @@ class VisualiseEmbedding:
         """
         # Compute PCA
         pca = PCA(n_components=2)
-        embedding_2d = pca.fit_transform(self.node_embeddings)
+        if instance:
+            embedding_2d = instance.transform(other_embedding)
+        else:
+            instance = pca.fit(self.node_embeddings)
+            embedding_2d = instance.transform(self.node_embeddings)
+            return embedding_2d, instance
     
         return embedding_2d
 
@@ -217,9 +229,7 @@ def highlight_node_and_neighbors(G, nodes, positions = None):
 
 
 
-
-
-def visualise_matching(graph1, graph2, row_ind, col_ind, node_size=100, fontsize=15):
+def visualise_matching(graph1, graph2, row_ind, col_ind, node_size=100, fontsize=15, as_bipartite=False, s=50, plot_orbits=False):
     """
     Visualizes the matching of nodes between two graphs using a bipartite graph.
     
@@ -228,48 +238,82 @@ def visualise_matching(graph1, graph2, row_ind, col_ind, node_size=100, fontsize
     - row_ind, col_ind: The row and column indices from the Hungarian matching
     """
     # Create a bipartite graph
-    B = nx.Graph()
+
+    if as_bipartite:
+        B = nx.Graph()
+        
+        # Add nodes for Graph 1 (using a distinct naming convention but will display as simple node labels)
+        for node in graph1.nodes():
+            B.add_node(f'{node}_1', bipartite=0)  # Nodes from graph1 are on one side (bipartite=0)
+        
+        # Add nodes for Graph 2 (using a distinct naming convention but will display as simple node labels)
+        for node in graph2.nodes():
+            B.add_node(f'{node}_2', bipartite=1)  # Nodes from graph2 are on the other side (bipartite=1)
+        
+        # Add edges based on the matching (row_ind and col_ind are the matching indices)
+        for i, j in zip(row_ind, col_ind):
+            B.add_edge(f'{i}_1', f'{j}_2')  # Create an edge between matching nodes in the bipartite graph
     
-    # Add nodes for Graph 1 (using a distinct naming convention but will display as simple node labels)
-    for node in graph1.nodes():
-        B.add_node(f'{node}_1', bipartite=0)  # Nodes from graph1 are on one side (bipartite=0)
+        # Get positions for the bipartite graph
+        pos = {}
+        
+        # Define y-spacing for Graph 1 and Graph 2
+        y_offset = 1  # Space between nodes
+        # Positions for nodes in Graph 1 (left side, x=0)
+        pos.update((f'{node}_1', (0, y_offset * index)) for index, node in enumerate(graph1.nodes()))  
+        # Positions for nodes in Graph 2 (right side, x=1)
+        pos.update((f'{node}_2', (1, y_offset * index)) for index, node in enumerate(graph2.nodes()))
     
-    # Add nodes for Graph 2 (using a distinct naming convention but will display as simple node labels)
-    for node in graph2.nodes():
-        B.add_node(f'{node}_2', bipartite=1)  # Nodes from graph2 are on the other side (bipartite=1)
+        # Prepare labels for nodes (use original node IDs, without '_1' and '_2')
+        labels = {f'{node}_1': str(node) for node in graph1.nodes()}
+        labels.update({f'{node}_2': str(node) for node in graph2.nodes()})
     
-    # Add edges based on the matching (row_ind and col_ind are the matching indices)
-    for i, j in zip(row_ind, col_ind):
-        B.add_edge(f'{i}_1', f'{j}_2')  # Create an edge between matching nodes in the bipartite graph
-
-    # Get positions for the bipartite graph
-    pos = {}
+        # Plot the bipartite graph
+        plt.figure(figsize=(10, 7))
+        nx.draw(B, pos, with_labels=True, labels=labels, node_size=node_size, node_color="skyblue", edge_color="k", font_size=fontsize, font_weight="bold", alpha=1)
     
-    # Define y-spacing for Graph 1 and Graph 2
-    y_offset = 1  # Space between nodes
-    # Positions for nodes in Graph 1 (left side, x=0)
-    pos.update((f'{node}_1', (0, y_offset * index)) for index, node in enumerate(graph1.nodes()))  
-    # Positions for nodes in Graph 2 (right side, x=1)
-    pos.update((f'{node}_2', (1, y_offset * index)) for index, node in enumerate(graph2.nodes()))
+        # Add graph labels
+        plt.text(-0.2, -0.5, "Graph 1", fontsize=12, ha='center', va='center', fontweight='bold')
+        plt.text(1.2, -0.5, "Graph 2", fontsize=12, ha='center', va='center', fontweight='bold')
+    
+        # Display the plot
+        plt.title("Bipartite Graph of Node Matching")
+        plt.show()
 
-    # Prepare labels for nodes (use original node IDs, without '_1' and '_2')
-    labels = {f'{node}_1': str(node) for node in graph1.nodes()}
-    labels.update({f'{node}_2': str(node) for node in graph2.nodes()})
+    else:
+        fig = plt.figure(figsize=(10, 10))
+        plt.scatter(row_ind, col_ind)
+        plt.plot(row_ind, row_ind, color='k', linestyle='--')
+        plt.grid()
+        plt.xticks(row_ind) ; plt.yticks(row_ind)
+        plt.xlabel('Original') ; plt.ylabel('Matched')
 
-    # Plot the bipartite graph
-    plt.figure(figsize=(10, 7))
-    nx.draw(B, pos, with_labels=True, labels=labels, node_size=node_size, node_color="skyblue", edge_color="k", font_size=fontsize, font_weight="bold", alpha=1)
-
-    # Add graph labels
-    plt.text(-0.2, -0.5, "Graph 1", fontsize=12, ha='center', va='center', fontweight='bold')
-    plt.text(1.2, -0.5, "Graph 2", fontsize=12, ha='center', va='center', fontweight='bold')
-
-    # Display the plot
-    plt.title("Bipartite Graph of Node Matching")
-    plt.show()
-
+        if plot_orbits:
+            orbits = find_orbits(graph1)
+            for orbit in orbits:
+                if len(orbit)>1:
+                    plt.scatter(list(orbit), list(orbit), s=s)
+        
+        
+        plt.show()
+        
     return None
 
+
+def find_orbits(graph):
+    automorphisms = list(nx.algorithms.isomorphism.GraphMatcher(graph, graph).isomorphisms_iter())
+    orbits = []
+    visited = set()
+    
+    for node in graph.nodes():
+        if node not in visited:
+            orbit = set()
+            for auto in automorphisms:
+                orbit.add(auto[node])
+            orbits.append(orbit)
+            visited.update(orbit)
+    
+    return orbits
 
 def draw_network_with_communities(graph, partition, title):
     # Get a list of unique communities
