@@ -74,28 +74,41 @@ class AnalyticalDistribution:
             T = self.T
         N = T.shape[0]
         T_ = self.transition_matrix_with0(T, node)
-        
-        # Move matrices to the device (GPU or CPU)
-        T_tensor = torch.tensor(T.toarray(), device=self.device, dtype=torch.float64)
-        T_tensor_ = torch.tensor(T_.toarray(), device=self.device, dtype=torch.float64)
+        if self.device == torch.device('cuda'):
+            # Move matrices to the device (GPU or CPU)
+            T_tensor = torch.tensor(T.toarray(), device=self.device, dtype=torch.float64)
+            T_tensor_ = torch.tensor(T_.toarray(), device=self.device, dtype=torch.float64)
 
-        vec = torch.zeros(N, device=self.device, dtype=torch.float64)
-        vec[node] = 1
-        p = torch.zeros(max_steps, device=self.device, dtype=torch.float64)
-        
-        # Initial matrix-vector multiplication
-        vec = torch.matmul(vec, T_tensor)
-        
-        for i in range(max_steps):
-            vec = torch.matmul(vec, T_tensor_)
-            p[i] = vec[node]
-        
-        return p.cpu().numpy()  # Move result back to CPU and convert to NumPy array
+            vec = torch.zeros(N, device=self.device, dtype=torch.float64)
+            vec[node] = 1
+            p = torch.zeros(max_steps, device=self.device, dtype=torch.float64)
 
+            # Initial matrix-vector multiplication
+            vec = torch.matmul(vec, T_tensor)
+
+            for i in range(max_steps):
+                vec = torch.matmul(vec, T_tensor_)
+                p[i] = vec[node]
+
+            return p.cpu().numpy()  # Move result back to CPU and convert to NumPy array
+        
+        else:
+            vec = np.zeros(N)
+            vec[node] = 1
+            p = np.zeros(max_steps)
+
+            # Initial matrix-vector multiplication
+            vec = vec@T
+
+            for i in range(max_steps):
+                vec = vec@T_
+                p[i] = vec[node]
+
+            return p
     
     def compute_FRT_distributions(self, max_steps=200, progress_bar=True):
         results = {}
-        with ThreadPoolExecutor() as executor:
+        with ProcessPoolExecutor() as executor:
             futures = {executor.submit(self.FRT_distribution_node, self.T, node, max_steps): node for node in range(self.T.shape[0])}
     
             # Use tqdm for progress bar if progress_bar is True
