@@ -589,6 +589,8 @@ def generate_embedding(G, M=200, progress_bar=True, automatically_index=True, me
                 matrix[i, :] = np.array(list(FRTs[keys[i]].values()))
     elif method=='generating-function' or method=='generating function':
         matrix = first_return_dist(A, K=M)[:, 2:]
+    elif method=='FFT' or method=='fft':
+        matrix = first_return_dist(A, K=M, use_fft=True)[:, 2:]
     elif method=='MonteCarlo' or method=='Monte Carlo' or method=='montecarlo' or method=='monte-carlo':
         N = len(G.nodes)
         matrix = np.zeros((N, M-1), dtype=float)
