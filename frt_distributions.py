@@ -32,6 +32,8 @@ from sklearn.mixture import GaussianMixture
 from sklearn.preprocessing import StandardScaler
 from sklearn.metrics import silhouette_score
 
+from convert_ad import first_return_dist
+
 ########## Calculation of First return distributions by repeated matrix multiplication ##########
 
 class AnalyticalDistribution:
@@ -565,7 +567,7 @@ def calc_distance(G, measure = 'L1', max_steps = 200, use_monte_carlo=False, num
             return None 
 
 
-def generate_embedding(G, M=200, progress_bar=True, automatically_index=True):
+def generate_embedding(G, M=200, progress_bar=True, automatically_index=True, method='matrix-multiplication'):
     '''
     Requires : Graph
     Optional Inputs:
@@ -574,16 +576,34 @@ def generate_embedding(G, M=200, progress_bar=True, automatically_index=True):
 
     Returns : NxM matrix containing the node embeddings
     '''
-    N = len(G.nodes)
-    matrix = np.zeros((N, M-1), dtype=float)
-    FRT_calc = AnalyticalDistribution(G)
-    FRTs = FRT_calc.compute_FRT_distributions(max_steps=M, progress_bar=progress_bar)
-    keys = list(FRTs.keys())
-    for i in range(N):
-        if automatically_index:
-            matrix[i, :] = np.array(list(FRTs[i].values()))
-        else:
-            matrix[i, :] = np.array(list(FRTs[keys[i]].values()))
+    if method=='matrix-multiplication' or method=='matmul' or method=='MatMul' or method=='matrix multiplication':
+        N = len(G.nodes)
+        matrix = np.zeros((N, M-1), dtype=float)
+        FRT_calc = AnalyticalDistribution(G)
+        FRTs = FRT_calc.compute_FRT_distributions(max_steps=M, progress_bar=progress_bar)
+        keys = list(FRTs.keys())
+        for i in range(N):
+            if automatically_index:
+                matrix[i, :] = np.array(list(FRTs[i].values()))
+            else:
+                matrix[i, :] = np.array(list(FRTs[keys[i]].values()))
+    elif method=='generating-function' or method=='generating function':
+        matrix = first_return_dist(A, K=M)[:, 2:]
+    elif method=='MonteCarlo' or method=='Monte Carlo' or method=='montecarlo' or method=='monte-carlo':
+        N = len(G.nodes)
+        matrix = np.zeros((N, M-1), dtype=float)
+        graph_walker = GraphWalker(G)
+        graph_walker.create_walkers(num_walkers=num_walkers, store_walk=False)
+        graph_walker.run_all_walks_parallel(num_steps=M)
+        all_first_return_times, pmf = graph_walker.get_aggregated_first_return_times(return_pmf=True)
+        keys = list(pmf.keys())
+        for i in range(N):
+            if automatically_index:
+                matrix[i, :] = np.array(list(pmf[i].values()))
+            else:
+                matrix[i, :] = np.array(list(pmf[keys[i]].values()))
+    else:
+        raise ValueError('Invalid method')
 
     return matrix
 
