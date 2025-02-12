@@ -143,6 +143,8 @@ MCMC Functions
 def mcmc_graph_chain(
     original_graph, #Graph to randomise
     generate_embedding=generate_embedding, #Function which generates embedding (default creates full distribution embedding)
+    method='matrix-multiplication',
+    parallel=True,
     starting_graph=None, #Graph to initialise MCMC algorithm with (if nothing is provided we start with the original graph) 
     n_steps=10000, #Length of chain
     burn_in=1000, #Burn-in time
@@ -172,14 +174,14 @@ def mcmc_graph_chain(
     if not nx.is_connected(original_graph):
         raise ValueError("The input graph must be connected.")
     
-    original_embedding = generate_embedding(original_graph, M=M, progress_bar=False)
+    original_embedding = generate_embedding(original_graph, M=M, progress_bar=False, method=method, parallel=parallel)
     
     if starting_graph is None:
         current_graph = original_graph.copy()
         current_embedding = original_embedding
     else:
         current_graph = starting_graph.copy()
-        current_embedding = generate_embedding(starting_graph, M=M, progress_bar=False)
+        current_embedding = generate_embedding(starting_graph, M=M, progress_bar=False, method=method, parallel=parallel)
     
     current_similarity = distance(original_embedding, current_embedding)
     print('Starting distance =', current_similarity)
@@ -214,7 +216,7 @@ def mcmc_graph_chain(
         if not nx.is_connected(proposed_graph):
             continue
         
-        proposed_embedding = generate_embedding(proposed_graph, M=M, progress_bar=False)
+        proposed_embedding = generate_embedding(proposed_graph, M=M, progress_bar=False, method=method, parallel=parallel)
         proposed_similarity = distance(original_embedding, proposed_embedding)
         delta_similarity = proposed_similarity - current_similarity
         acceptance_prob = np.exp(-betas[step] * delta_similarity)
