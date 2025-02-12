@@ -52,6 +52,7 @@ class AnalyticalDistribution:
     def __init__(self, graph, print_device=False):
         self.graph = graph
         self.T = self.transition_matrix(graph)
+        self.N = len(graph.nodes())
 
         # Check if a GPU is available and print the device being used
         self.device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
@@ -106,31 +107,46 @@ class AnalyticalDistribution:
 
             return p
     
-    def compute_FRT_distributions(self, max_steps=200, progress_bar=True):
-        results = {}
-        with ProcessPoolExecutor() as executor:
-            futures = {executor.submit(self.FRT_distribution_node, self.T, node, max_steps): node for node in range(self.T.shape[0])}
-    
-            # Use tqdm for progress bar if progress_bar is True
-            if progress_bar:
+    def compute_FRT_distributions(self, max_steps=200, progress_bar=True, parallel=True):
+        results = {} ; FRTs = {}
+        if parallel:
+            with ProcessPoolExecutor() as executor:
+                futures = {executor.submit(self.FRT_distribution_node, self.T, node, max_steps): node for node in range(self.T.shape[0])}
+                
+        # Use tqdm for progress bar if progress_bar is True
+        if progress_bar:
+            if parallel:
                 for future in tqdm(as_completed(futures), total=len(futures), desc="Computing FRT Distributions"):
                     node = futures[future]
                     try:
                         results[node] = future.result()
                     except Exception as e:
                         print(f"Node {node} generated an exception: {e}")
+                keys = np.arange(2, max_steps+1)
+                for i in range(len(self.graph.nodes())):
+                    FRTs[i] = dict(zip(keys, list(results[i])))
             else:
+                keys = np.arange(2, max_steps+1)
+                for i in tqdm(self.graph.nodes()):
+                    results[i] = self.FRT_distribution_node(self.T, node=i, max_steps=max_steps)
+                    FRTs[i] = dict(zip(keys, list(results[i])))
+        else:
+            if parallel:
                 for future in as_completed(futures):
                     node = futures[future]
                     try:
                         results[node] = future.result()
                     except Exception as e:
                         print(f"Node {node} generated an exception: {e}")
+                keys = np.arange(2, max_steps+1)
+                for i in range(len(self.graph.nodes())):
+                    FRTs[i] = dict(zip(keys, list(results[i])))
+            else:
+                keys = np.arange(2, max_steps+1)
+                for i in self.graph.nodes():
+                    results[i] = self.FRT_distribution_node(self.T, node=i, max_steps=max_steps)
+                    FRTs[i] = dict(zip(keys, list(results[i])))
     
-        keys = np.arange(2, max_steps+1)
-        FRTs = {}
-        for i in range(len(self.graph.nodes())):
-            FRTs[i] = dict(zip(keys, list(results[i])))
         return FRTs
 
 
@@ -580,7 +596,7 @@ def calc_distance(G, measure = 'L1', max_steps = 200, use_monte_carlo=False, num
             return None 
 
 
-def generate_embedding(G, M=200, progress_bar=True, automatically_index=True, method='matrix-multiplication'):
+def generate_embedding(G, M=200, progress_bar=True, automatically_index=True, method='matrix-multiplication', parallel=True):
     '''
     Requires : Graph
     Optional Inputs:
@@ -593,7 +609,7 @@ def generate_embedding(G, M=200, progress_bar=True, automatically_index=True, me
         N = len(G.nodes)
         matrix = np.zeros((N, M-1), dtype=float)
         FRT_calc = AnalyticalDistribution(G)
-        FRTs = FRT_calc.compute_FRT_distributions(max_steps=M, progress_bar=progress_bar)
+        FRTs = FRT_calc.compute_FRT_distributions(max_steps=M, progress_bar=progress_bar, parallel=parallel)
         keys = list(FRTs.keys())
         for i in range(N):
             if automatically_index:
@@ -601,6 +617,7 @@ def generate_embedding(G, M=200, progress_bar=True, automatically_index=True, me
             else:
                 matrix[i, :] = np.array(list(FRTs[keys[i]].values()))
     elif method=='generating-function' or method=='generating function':
+        A = nx.to_scipy_sparse_array(G, nodelist=range(G.number_of_nodes()))
         matrix = first_return_dist(A, K=M)[:, 2:]
     elif method=='FFT' or method=='fft':
         matrix = first_return_dist(A, K=M, use_fft=True)[:, 2:]
@@ -637,7 +654,7 @@ def std(pmf):
         s1 += t[i] * p[i] ; s2 += t[i]**2 * p[i]
     return s2 - s1**2
 
-def mean_variance_embedding(G, with_spectrum = True, M=500, progress_bar=True):
+def mean_variance_embedding(G, with_spectrum = True, M=500, progress_bar=True, method='matrix-multiplication', parallel=True):
     '''
     Function which takes in a graph and returns the mean-standard deviation embedding
     
@@ -653,7 +670,7 @@ def mean_variance_embedding(G, with_spectrum = True, M=500, progress_bar=True):
     embedding = np.zeros((N, 2))
     if with_spectrum==False:
         FRT_calc = AnalyticalDistribution(G)
-        FRTs = FRT_calc.compute_FRT_distributions(max_steps=M, progress_bar=progress_bar)
+        FRTs = FRT_calc.compute_FRT_distributions(max_steps=M, progress_bar=progress_bar, method=method, parallel=parallel)
         for i in range(N):
             embedding[i, 0] = mean(FRTs[i]) ; embedding[i, 1] = np.sqrt(std(FRTs[i]))
     else:
